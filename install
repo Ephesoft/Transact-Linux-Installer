@@ -1,0 +1,116 @@
+#!/bin/bash
+
+
+home_directory_path="$PWD"
+installation_log_file=$home_directory_path/installation.log
+status_variable=installation_status
+success_variable=success
+failure_varable=failure
+error_deleting_installation_log_file="Error deleting $installation_log_file file."
+if [[ $2 == "-product" ]]
+then
+  product_name=product
+else
+  product_name=Ephesoft
+fi
+
+if [[ $1 == "-silentinstall" ]]
+then
+	is_generic_installer=1
+fi
+#Error in case if script is not run as super user. 
+error_not_root_user="Please run $product_name installation script with super user permissions."
+
+#Defining the log file name.
+ephesoft_log_file_name=/var/log/install-ephesoft.log
+
+response_file="Response-Files/config.properties"
+
+#Message to be displayed if install-helper script is missing.
+install_script_missing="install-helper script is missing. Hence product can't be installed."
+error_response_file_not_found="Response file not found."
+error_conf_file="Error in config.properties file in "
+
+#Deletes the folder recursively and show message if any error occurred.
+delete_files_and_show_message_if_error_occurred() {
+
+	rm -rf "$1" >> $ephesoft_log_file_name 2>&1
+	if [ $? != 0 ] 
+	then
+		echo $2
+	fi
+}
+
+#Prints the error message and exits from script.
+show_error_message_and_exit() {
+	echo $1
+	if [[ $is_generic_installer == "1" ]]
+	then
+	  if [[ -f "$installation_log_file" ]]
+	  then
+	      delete_files_and_show_message_if_error_occurred $installation_log_file "$error_deleting_installation_log_file"
+	  fi
+	  echo $1 > "$installation_log_file"
+	  echo $status_variable=$failure_varable >> "$installation_log_file"
+	fi
+	exit 1
+}
+
+#Checking whether the script is run as super user or not.
+if [ "$(id -u)" != "0" ]
+then
+   	show_error_message_and_exit "$error_not_root_user"
+fi
+
+if [[ $1 == "-silentinstall" ]]
+then
+	if [[ -f "$installation_log_file" ]]
+	then
+	    delete_files_and_show_message_if_error_occurred "$installation_log_file" "$error_deleting_installation_log_file"
+	fi
+fi
+
+
+if [ ! -f install-helper ]
+then
+	show_error_message_and_exit "$install_script_missing"
+fi
+
+if [[ $1 == "-silentinstall" ]] && [[ $2 == "-product" ]]
+then
+	if [[ ! -f $response_file ]]
+	then
+	      show_error_message_and_exit "$error_response_file_not_found"
+	fi
+	for i in `cat $response_file `
+	do
+	  temp=`echo $i | grep "="`
+	  if [[ $temp == '' ]]
+	  then
+	      continue
+	  fi
+	  var=`echo "$i" | awk -F"=" '{print $1}'`
+	  if [[ $var == "input_product_name" ]]
+	  then
+	      param=`echo "$i" | awk -F"=" '{print $2}'`
+	      eval $var=$param >> $ephesoft_log_file_name  2>&1
+	  fi   
+	  if [[ $var == "input_service_name" ]]
+	  then
+	      param=`echo "$i" | awk -F"=" '{print $2}'`
+	      eval $var=$param >> $ephesoft_log_file_name  2>&1
+	  fi 
+	done
+	
+	if [[ $input_product_name == "" ]]
+	then
+		show_error_message_and_exit "$error_conf_file input_product_name."
+	fi
+	if [[ $input_service_name == "" ]]
+	then
+		show_error_message_and_exit "$error_conf_file input_service_name."
+	fi
+fi
+
+script -c "./install-helper $1 $2 $input_product_name $input_service_name" -q -a $ephesoft_log_file_name 2>&1
+

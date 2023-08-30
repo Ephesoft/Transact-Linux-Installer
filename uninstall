@@ -1,0 +1,1172 @@
+#!/bin/bash
+home_directory_path="$PWD"
+#Reading file for reading params of Product name and company name file contains properties like caption_EphesoftTransact,caption_ephesoft,caption_transact 
+source "$home_directory_path/Response-Files/product_captions/captions.properties"
+if [ $caption_ephesoft == "@@Ephesoft@@" ]
+then
+	caption_ephesoft="Ephesoft"
+fi
+if [ $caption_EphesoftTransact == "@@EphesoftTransact@@" ]
+then
+	caption_EphesoftTransact="Ephesoft Transact"
+fi
+if [ $caption_transact == "@@Transact@@" ]
+then
+	caption_transact="Transact"
+fi
+
+if [[ $1 == "-product" ]]
+then
+  product_name=product
+else
+  product_name=${caption_ephesoft,,}
+fi
+
+response_file="Response-Files/config.properties"
+error_conf_file="Error in config.properties file in "
+error_response_file_not_found="Response file not found."
+exiting_script="Exiting from script..."
+error_not_root_user="Please run $product_name uninstallation script with super user permissions."
+#Defining the log file name.
+ephesoft_log_file_name=/var/log/install-ephesoft.log
+
+#check whether the script is run as super user or not.
+if [ "$(id -u)" != "0" ]
+then
+   	echo $error_not_root_user
+	exit 1
+fi
+
+#Exits from script.
+exit_script() {
+	echo $exiting_script
+	exit 1
+}
+
+#Prints the error message and on console and exits from script.
+show_error_message_and_exit() {
+	echo $1
+	exit_script
+}
+
+if [[ $1 == "-product" ]]
+then
+    if [[ ! -f $response_file ]]
+    then
+	show_error_message_and_exit "$error_response_file_not_found"
+    fi
+   
+    for i in `cat $response_file `
+    do
+	  temp=`echo $i | grep "="`
+	  if [[ $temp == '' ]]
+	  then
+	      continue
+	  fi
+	  var=`echo "$i" | awk -F"=" '{print $1}'`
+	  if [[ $var == "input_product_name" ]]
+	  then
+	      param=`echo "$i" | awk -F"=" '{print $2}'`
+	      eval $var=$param >> $ephesoft_log_file_name  2>&1
+	  fi   
+	  if [[ $var == "input_service_name" ]]
+	  then
+	      param=`echo "$i" | awk -F"=" '{print $2}'`
+	      eval $var=$param >> $ephesoft_log_file_name  2>&1
+	  fi 
+    done
+	
+  if [[ $input_product_name == "" ]]
+  then
+	  show_error_message_and_exit "$error_conf_file input_product_name."
+  fi
+  if [[ $input_service_name == "" ]]
+  then
+	  show_error_message_and_exit "$error_conf_file input_service_name."
+  fi
+  product_name=$input_product_name
+  if [[ $input_service_name != "" ]]
+  then
+    service_name=$input_service_name
+    #As service name can be of on word. So omitting extra words.
+    service_name=${service_name%% *}
+  else
+    service_name=${product_name%% *}
+  fi
+  product_name_message=$product_name
+else
+  product_name=$caption_ephesoft
+  service_name=${product_name,,}
+  product_name_message=`echo "${product_name^}"`
+fi
+
+#Linux machine 
+operating_system=redhat
+ubuntu=ubuntu
+redhat=redhat
+centos=centos
+amazon_linux=amazon_linux
+ephesoft_version=2023.1.00
+
+#Defining the path and parameters for Ephesoft configuration Directory.
+ephesoft_configuration_directory_path=/etc/Ephesoft
+ephesoft_conf_file_params=( imagemagick graphicsmagick mysql mariadb database_type oracle tesseract leptonica libreoffice wkhtmltopdf ephesoft_application ephesoft_shared_folders ephesoft_installed omnipage poco tomcat_port_number database_port_number dev_tools checkinstall os_name application_user application_user_group temp_directory authentication_mode connector_protocol server_name)
+
+#Defining the path for Ephesoft configuration File.
+ephesoft_configuration_file=$ephesoft_configuration_directory_path/ephesoft.conf
+
+#Defining the name for Ephesoft configuration file.
+ephesoft_configuration_file_name=ephesoft.conf
+
+#License registration file
+ephesoft_user_registration_information_file_name=user.conf
+ephesoft_user_registration_information_file_path=$ephesoft_configuration_directory_path/$ephesoft_user_registration_information_file_name
+error_deleting_user_config_file="Error occurred while deleting file $ephesoft_user_registration_information_file_name"
+
+mysql_installation_directory=/opt/mysql
+mariadb_installation_directory=/opt/mariadb
+mysql_configuration_file=/etc/my.cnf
+mysql_configuration_file_backup=/etc/my.cnf.backup
+mysql_admin_link=/usr/bin/mysqladmin
+
+#Defining the path for the libreoffice link/directory.
+libreoffice_link=/usr/bin/soffice
+libreoffice_installation_directory=/opt/libreoffice6.3
+libreoffice_java_path=/etc/profile.d/ephesoft_jdk.sh
+user_local_bin_path="/usr/local/bin"
+mysql_links=/usr/bin/mysql*
+
+#Defining the Ephesoft service file
+ephesoft_service_link=/etc/init.d/ephesoft
+
+#Defining the iptables file name.
+iptables_file_name=/etc/sysconfig/iptables
+
+#Dependencies version
+imagemagick_version=ImageMagick-7.0.11-7
+graphicsmagick_version=GraphicsMagick-1.3.33
+tesseract_version=tesseract-3.04.00
+leptonica_version=leptonica-1.76.0
+
+#rpm packages for dependencies
+imagemagick_rpm_package=ImageMagick-7.0.11-7-1.x86_64
+graphicsmagick_rpm_package=GraphicsMagick-1.3.33-1.x86_64
+tesseract_rpm_package=tesseract-3.04.00-1.x86_64
+leptonica_rpm_package=leptonica-1.76.0-1.x86_64
+poco_rpm_package=poco-1.11.1-1.x86_64
+nuance_devel_rpm_package=omnipage-csdk-devel-22.0-22456.2100.x86_64
+nuance_lib64_rpm_package=omnipage-csdk-lib64-22.0-22456.2100.x86_64
+
+#Dependencies source folder
+sources_folder=/opt/sources
+
+#Defining all the messages which is to be displayed while doing uninstallation of Ephesoft.
+
+info_uninstalling_ephesoft="========== Uninstalling $product_name_message application =========="
+info_removing_sharedfolders="Removing $product_name_message SharedFolders. Please wait..."
+info_uninstall_shared_folders="Do you want to uninstall SharedFolders? Please enter a valid option(y/n)."
+info_uninstall_application="Removing $product_name_message application. Please wait..."
+info_uninstalling_imagemagick="Do you want to uninstall Imagemagick? Please enter a valid option(y/n)."
+info_uninstalling_graphicsmagick="Do you want to uninstall Graphicsmagick? Please enter a valid option(y/n)."
+info_uninstall_mysql="Do you want to uninstall MySQL? Please enter a valid option(y/n)."
+info_uninstall_mariadb="Do you want to uninstall MariaDB? Please enter a valid option(y/n)."
+info_uninstall_libreoffice="Do you want to uninstall LibreOffice? Please enter a valid option(y/n)."
+info_uninstall_wkhtmltopdf="Do you want to uninstall Wkhtmltopdf? Please enter a valid option(y/n)."
+info_uninstall_tesseract="Do you want to uninstall Tesseract? Please enter a valid option(y/n)."
+info_uninstall_nuance="Do you want to uninstall OmniPage? Please enter a valid option(y/n)."
+info_uninstall_leptonica="Uninstalling Leptonica. Please wait..."
+info_uninstall_imagemagick_wait="Uninstalling Imagemagick. Please wait..."
+info_uninstall_graphicsmagick_wait="Uninstalling Graphicsmagick. Please wait..."
+info_uninstall_mysql_wait="Uninstalling MySQL. Please wait..."
+info_uninstall_mariadb_wait="Uninstalling MariaDB. Please wait..."
+info_uninstall_libreoffice_wait="Uninstalling LibreOffice. Please wait..."
+info_uninstall_wkhtmltopdf_wait="Uninstalling Wkhtmltopdf. Please wait..."
+info_uninstall_tesseract_wait="Uninstalling Tesseract. Please wait..."
+info_uninstall_nuance_wait="Uninstalling OmniPage. Please wait..."
+info_uninstall_poco="Uninstalling POCO. Please wait..."
+info_server_already_running="$product_name_message server is already running. Do you want to forcefully stop the server? Please enter a valid option(y/n)."
+error_occurred_while_deleting_temp_directory="Error occurred while deleting temp directory."
+success_uninstall_shared_folders="SharedFolders uninstalled successfully."
+success_uninstall_application="$product_name_message application uninstalled successfully."
+success_uninstall_imagemagick="Imagemagick uninstalled successfully."
+success_uninstall_graphicsmagick="Graphicsmagick uninstalled successfully."
+success_uninstall_mysql="MySQL uninstalled successfully."
+success_uninstall_mariadb="MariaDB uninstalled successfully."
+success_uninstall_libreoffice="LibreOffice uninstalled successfully."
+success_uninstall_wkhtmltopdf="Wkhtmltopdf uninstalled successfully."
+success_uninstall_leptonica="Leptonica uninstalled successfully."
+success_uninstall_tesseract="Tesseract uninstalled successfully."
+success_uninstall_poco="POCO uninstalled successfully."
+success_uninstall_nuance="OmniPage uninstalled successfully."
+
+error_not_root_user="Please run $product_name_message uninstallation script with super user permissions."
+error_stopping_server="Error occurred while stopping server."
+error_conf_directory="$product_name_message configuration directory doesn't exist. Hence $product_name_message can't be uninstalled."
+error_conf_file="$product_name_message configuration file doesn't exist. Hence $product_name_message can't be uninstalled."
+error_ephesoft_not_installed="$product_name_message is not installed on this system."
+error_deleting_sharedfolders="Error occurred while uninstalling $product_name_message SharedFolders."
+error_deleting_application="Error occurred while uninstalling $product_name_message Application."
+error_invalid_option_selected="Please enter a valid option(y/n)."
+error_uninstall_imagemagick="Error occurred while uninstalling Imagemagick."
+error_uninstall_graphicsmagick="Error occurred while uninstalling Graphicsmagick."
+error_uninstall_mysql="Error occurred while uninstalling MySQL."
+error_uninstall_mariadb="Error occurred while uninstalling MariaDB."
+error_uninstall_libreoffice="Error occurred while uninstalling LibreOffice."
+error_uninstall_wkhtmltopdf="Error occurred while uninstalling Wkhtmltopdf."
+error_uninstall_leptonica="Error occurred while uninstalling Leptonica."
+error_uninstall_tesseract="Error occurred while uninstalling Tesseract."
+error_uninstall_poco="Error occurred while uninstalling POCO."
+error_uninstall_nuance="Error occurred while uninstalling OmniPage."
+success_deleting_ephesoft_folder="$product_name_message folder deleted successfully."
+success_deleting_dependency_source_folder="$product_name_message software dependencies source folder deleted successfully."
+successful_uninstall="uninstalled successfully."
+success_ephesoft_uninstall="============ $product_name_message uninstalled successfully ============="
+error_deleting_ephesoft_folder="Error occurred while deleting $product_name_message folder."
+error_stopping_mysql_server="Error occurred while stopping MySQL server."
+error_stopping_mariadb_server="Error occurred while stopping MariaDB server."
+error_deleting_mysql_folder="Error occurred while deleting MySQL folder."
+error_deleting_mariadb_folder="Error occurred while deleting MariaDB folder."
+error_deleting_mysql_conf_file="Error occurred while deleting MySQL configuration file."
+error_deleting_mariadb_conf_file="Error occurred while deleting MariaDB configuration file."
+error_deleting_mysql_link="Error occurred while deleting MySQL link."
+error_deleting_mariadb_link="Error occurred while deleting MariaDB link."
+error_deleting_mysql_service="Error occurred while deleting MySQL service."
+error_deleting_mariadb_service="Error occurred while deleting MariaDB service."
+error_starting_iptables_service="Error occurred while starting the iptables service."
+error_disable_db_port="Error occurred while disabling access for the database port."
+error_disable_tomcat_port="Error occurred while disabling access for the tomcat port."
+error_disable_libreoffice_port="Error occurred while disabling access for the LibreOffice port."
+error_deleting_libreoffice_folder="Error occurred while deleting LibreOffice folder."
+error_deleting_jdk_path="Error occurred while deleting Libreoffice jdk path."
+error_deleting_dependency_source_folder="Error occurred while deleting sources folder for $product_name_message dependencies."
+error_replacing_ephesoft_config_file_params="Error occurred while replacing parameter: "
+error_deleting_libreoffice_link="Error occurred while deleting link for LibreOffice."
+error_deleting="Error occurred while deleting"
+error_uninstall="Error occurred while uninstalling"
+error_not_exists="does not exists at given path."
+error_in_removing="Error in removing"
+error_in_removing_dependency_conf_file="from configuration file for Ubuntu operating system."
+error_deleting_convert_backup_file="Error occurred while deleting convert_backup file."
+
+#Disable Firewall setting for tomcat port and database port
+info_firewall_ufw_is_inactive="Firewall ufw is inactive."
+firewall_deny="Disabling firewall port "
+firewall_deny_tomcat_port=" for $product_name_message's Tomcat."
+firewall_deny_mysql_port=" for database port."
+info_firewall_cmd_is_inactive="firewall-cmd is inactive."
+info_firewall_cmd_is_active="firewall-cmd is active."
+
+#Version error message
+version_error_uninstall_identifies="Installer identifies that "
+version_error_uninstall_installed=" version is installed on the system. Please use "
+version_error_uninstall_file=" version uninstallation file for uninstalling the $product_name_message."
+
+#Ephesoft service messages
+error_deleting_ephesoft_service="Error occurred while deleting $product_name_message service."
+info_deleting_service_file="Deleting service file, please wait..."
+error_deleting_ephesoft_service="Error occurred while deleting $product_name_message service."
+success_deleting_ephesoft_service="$product_name_message service deleted successfully."
+
+
+#Open office default port number
+openoffice_port_number=8100
+
+
+function uninstall_ephesoft() {
+
+echo `date "+%Y-%m-%d %H:%M:%S"`
+
+displayEphesoft() {
+cat <<"EOT" 
+                                                                
+ @@@@@@@@#          @@@                                `@@@      
+ @@@@@@@@#          @@@                                @@@@      
+ @@@@####+          @@@                               @@@.  #    
+ @@@,               @@@                               @@@  '@    
+ @@@,     .@@ @@@`  @@@ @@@    ;@@@`   +@@#    @@@+  @@@@@;@@@@@ 
+ @@@@@@@@..@@@@@@@' @@@@@@@@  @@@@@@+ @@@@@@ '@@@@@@`@@@@@@@@@@@ 
+ @@@@@@@@..@@+ `@@@ @@@; ;@@`#@@  :@@ @@   ' @@@  @@@ @@@  @@    
+ @@@';::;`.@@   .@@,@@@   @@,@@@   @@;@@@;  #@@   .@@,@@@  @@    
+ @@@,     .@@    @@'@@@   @@,@@@@@@@@@:@@@@;@@@    @@'@@@  @@    
+ @@@,     .@@   `@@:@@@   @@,@@@        #@@@@@@   `@@,@@@  @@    
+ @@@+'''''.@@:  @@@ @@@   @@,#@@     :    @@`@@@  @@@ @@@  @@'   
+ @@@@@@@@@.@@@@@@@# @@@   @@, @@@@@@@:@@@@@@ #@@@@@@; @@@  @@@@@ 
+ @@@@@@@@@.@@.@@@;  @@@   @@,  #@@@@. #@@@@   ,@@@@`  @@@  `@@@@ 
+          .@@                                                    
+          .@@                                      
+          .@@              @@@@@@  @@@@@@  @@@@@@  @@@@@@     @@     @@@@@@  @@@@@@
+          .@@                   @  @    @       @       @    @ @     @    @  @    @
+          .@@              @@@@@@  @    @  @@@@@@  @@@@@@      @     @    @  @    @
+          .@@              @       @    @  @            @      @     @    @  @    @
+          .@@              @@@@@@  @@@@@@  @@@@@@  @@@@@@ @ @@@@@@ @ @@@@@@  @@@@@@
+
+
+EOT
+}
+
+dispayVersion() {
+cat << "EOT"
+
+@@@@@@  @@@@@@  @@@@@@  @@@@@@     @@     @@@@@@  @@@@@@
+     @  @    @       @       @    @ @     @    @  @    @
+@@@@@@  @    @  @@@@@@  @@@@@@      @     @    @  @    @
+@       @    @  @            @      @     @    @  @    @
+@@@@@@  @@@@@@  @@@@@@  @@@@@@ @ @@@@@@ @ @@@@@@  @@@@@@
+
+EOT
+}
+
+
+if [[ $product_name == 'ephesoft' ]] || [[ $product_name == 'Ephesoft' ]]
+then
+    displayEphesoft
+else
+    echo $product_name_message
+    dispayVersion
+fi
+
+readinput() {
+               while [ 0 ]
+               do
+                   read input
+                   eval "$1=$input"
+                   if [ "$input" != '' ] 
+                   then
+                       break
+                   fi
+               done
+}
+
+#Replaces the configuration parameter in Ephesoft configuration file.
+replace_conf_parameters() {
+
+	find  $ephesoft_configuration_directory_path -type f -name $ephesoft_configuration_file_name -exec sed -i "s|$1=$2|$1=0|#g" {} \;
+	if [ $? != 0 ] 
+	then
+		echo $error_replacing_ephesoft_config_file_params$1.
+	fi
+}
+
+#Disable the access for the port passed.
+disable_access_port() {
+      if [ $operating_system = $redhat ]
+      then
+			firewall-cmd -V >> $ephesoft_log_file_name  2>&1
+			if [ $? == 0 ] 
+			then
+				echo "This is newer operating system supporting firewall-cmd."  >> $ephesoft_log_file_name  2>&1
+				task=$(firewall-cmd --state)
+				if echo "$task" | grep -q "running"; then
+					echo "$info_firewall_cmd_is_active" >>$ephesoft_log_file_name  2>&1
+					firewall-cmd --permanent --remove-port=$1/tcp >>$ephesoft_log_file_name  2>&1 
+					firewall-cmd --reload >>$ephesoft_log_file_name  2>&1 
+					if [ $? != 0 ]
+					then
+					echo $error_occurred_reloading_firewall_cmd
+					fi
+				else
+					echo "$info_firewall_cmd_is_inactive" >>$ephesoft_log_file_name  2>&1
+					firewall-cmd --permanent --remove-port=$1/tcp >>$ephesoft_log_file_name  2>&1 
+				fi
+				
+			elif [ -f $iptables_file_name ]
+				then
+					echo "This is older operating system supporting iptable." >>$ephesoft_log_file_name  2>&1
+					sed -i /$1/d $iptables_file_name
+					if [ $? != 0 ] 
+					then
+						echo $2
+					else
+						restart_iptables
+					fi
+			else
+					echo "This is older operating system supporting iptable. and $iptables_file_name not found"  >>$ephesoft_log_file_name  2>&1
+					iptables -V >> $ephesoft_log_file_name  2>&1
+					if [ $? == 0 ] 
+					then
+						iptables -C INPUT -m state --state NEW -m tcp -p tcp --dport $1 -j ACCEPT  >> $ephesoft_log_file_name  2>&1
+						if [ $? -eq 0 ]
+						then
+							iptables -D INPUT -m state --state NEW -m tcp -p tcp --dport $1 -j ACCEPT >> $ephesoft_log_file_name  2>&1
+							if [ $? != 0 ] 
+							then
+							  echo $2
+							fi
+							restart_iptables
+						else
+							echo "$2. $1 does not exists. "  >> $ephesoft_log_file_name  2>&1
+						fi
+					else
+						echo "This is newer operating system supporting nftable" >> $ephesoft_log_file_name  2>&1
+						nft --version >> $ephesoft_log_file_name  2>&1
+						if [ $? == 0 ]
+						then
+							nft list table ip ephesoft_filter >> $ephesoft_log_file_name  2>&1
+							if [ $? == 0 ]
+							then
+							  nft delete table ip ephesoft_filter
+							fi
+						fi
+					fi
+			fi
+      else if [ $operating_system = $ubuntu ]
+	   then
+	      ufw deny $1 >>$ephesoft_log_file_name  2>&1 
+	      task=$(ufw status)
+	      if echo "$task" | grep -q "inactive"; then
+		      echo "$info_firewall_ufw_is_inactive" >>$ephesoft_log_file_name  2>&1
+	       else
+		      service ufw restart >>$ephesoft_log_file_name  2>&1 
+	      fi
+	      if [ $? != 0 ] 
+	      then
+		      echo $2
+	      fi
+	    fi
+      fi
+      
+}
+
+#Delete the files recursively and show message if any error occurred.
+delete_files_and_show_message_if_error_occurred() {
+		rm -rf $1 >> $ephesoft_log_file_name 2>&1
+		if [ $? != 0 ] 
+		then
+       			echo $2
+		fi
+}
+
+#Delete the files recursively and show message either in case of success/failure.
+delete_files_recursively() {
+	if [ -d $1 -o -f $1 ]
+	then
+		rm -rf $1 >> $ephesoft_log_file_name 2>&1
+		if [ $? != 0 ]
+		then
+			echo $2
+		else
+			echo $3
+		fi
+	fi
+}	
+
+#Deletes the folder if it is empty.
+delete_folder_if_empty() {
+	if [ -d $1 ]
+	then
+		if find "$1" -maxdepth 0 -empty | read;
+		then
+			delete_files_recursively "$1" "$2" "$3"		
+		fi
+	fi
+}
+
+#Check the iptables status and restart the iptables service if it is already running.
+restart_iptables() {
+	service iptables status &>/dev/null >> $ephesoft_log_file_name  2>&1 
+	if [ $? = 0 ]
+	then
+		service iptables restart >> $ephesoft_log_file_name  2>&1
+		if [ $? != 0 ]
+		then
+			echo $error_starting_iptables_service
+		fi  
+	fi
+}
+
+#Uninstalls the Imagemagick.
+uninstall_imagemagick() {
+	echo $info_uninstall_imagemagick_wait
+	if [ -f $user_local_bin_path/convert_backup ]
+	then
+		delete_files_and_show_message_if_error_occurred $user_local_bin_path/convert_backup "$error_deleting_convert_backup_file"
+	fi
+	
+	if [ $operating_system = $redhat ]
+	then
+		rpm -ev $imagemagick_rpm_package >> $ephesoft_log_file_name 2>&1
+		if [ $? = 0 ] 
+		then
+			uninstall_dependencies $imagemagick_version ImageMagick imagemagick
+		else
+			echo $error_uninstall_imagemagick
+		fi
+	else if [ $operating_system = $ubuntu ]
+	     then
+		dpkg -r imagemagick-7.0.11 >> $ephesoft_log_file_name 2>&1
+		if [ $? = 0 ] 
+		then
+			uninstall_dependencies $imagemagick_version ImageMagick imagemagick
+		else
+			echo $error_uninstall_imagemagick
+		fi
+	    fi
+	fi
+
+	
+}
+
+#Uninstalls the Graphicsmagick.
+uninstall_graphicsmagick() {
+	echo $info_uninstall_graphicsmagick_wait
+	if [ $operating_system = $redhat ]
+	then
+		rpm -ev $graphicsmagick_rpm_package >> $ephesoft_log_file_name 2>&1
+		if [ $? = 0 ] 
+		then
+			uninstall_dependencies $graphicsmagick_version GraphicsMagick graphicsmagick
+		else
+			echo $error_uninstall_graphicsmagick
+		fi
+	else if [ $operating_system = $ubuntu ]
+	     then
+		dpkg -r graphicsmagick-1.3.33 >> $ephesoft_log_file_name 2>&1
+		if [ $? = 0 ] 
+		then
+			uninstall_dependencies $graphicsmagick_version GraphicsMagick graphicsmagick
+		else
+			echo $error_uninstall_graphicsmagick
+		fi
+	    fi
+	fi
+
+	
+}
+
+#Uninstalls the LibreOffice.
+uninstall_libreoffice() {
+	echo $info_uninstall_libreoffice_wait
+	
+	delete_files_and_show_message_if_error_occurred "$libreoffice_link" "$error_deleting_libreoffice_link"
+	if [ $operating_system = $redhat ]
+	then
+		rpm -ev --nodeps `rpm -qa | grep office*` >> $ephesoft_log_file_name 2>&1
+		rpm -ev --nodeps `rpm -qa | grep libobasis*` >> $ephesoft_log_file_name 2>&1
+		if [ $? = 0 ] 
+		then
+			delete_files_and_show_message_if_error_occurred "$libreoffice_installation_directory" "$error_deleting_libreoffice_folder"
+			echo $success_uninstall_libreoffice
+			replace_conf_parameters libreoffice 1
+		else
+			echo $error_uninstall_libreoffice
+		fi
+	else if [ $operating_system = $ubuntu ]
+	     then
+			echo "\n" |  add-apt-repository --remove ppa:libreoffice/libreoffice-4-2 >>$ephesoft_log_file_name  2>&1 
+			if [ $? != 0 ]
+			then
+				echo "Error in removing LibreOffice ppa." >>$ephesoft_log_file_name  2>&1 
+			fi
+			apt-get purge libreoffice? -y >> $ephesoft_log_file_name 2>&1
+			if [ $? != 0 ]
+			then
+				echo $error_uninstall_libreoffice
+			fi
+			apt-get autoremove -y --purge >> $ephesoft_log_file_name 2>&1
+			if [ $? != 0 ] 
+			then
+				echo $error_uninstall_libreoffice
+			fi
+			task=$(ufw status)
+			if echo "$task" | grep -q "inactive"; then
+				 echo "$info_firewall_ufw_is_inactive" >>$ephesoft_log_file_name  2>&1
+			else
+				service ufw restart >>$ephesoft_log_file_name  2>&1
+			fi
+			if [ $? = 0 ] 
+			then
+				if [ -d $libreoffice_installation_directory ]
+				then
+				      delete_files_and_show_message_if_error_occurred "$libreoffice_installation_directory" "$error_deleting_libreoffice_folder"
+				fi
+				echo $success_uninstall_libreoffice
+				replace_conf_parameters libreoffice 1
+			else
+				echo $error_uninstall_libreoffice
+			fi
+	     fi
+	fi
+}
+
+#Uninstalls the Wkhtmltopdf.
+uninstall_wkhtmltopdf() {
+	echo $info_uninstall_wkhtmltopdf_wait
+	
+	if [ $operating_system = $redhat ]
+	then
+			rpm -ev --nodeps `rpm -qa | grep wkhtml` >> $ephesoft_log_file_name 2>&1
+			if [ $? = 0 ] 
+			then
+				echo $success_uninstall_wkhtmltopdf
+				replace_conf_parameters wkhtmltopdf 1
+			else
+				echo $error_uninstall_wkhtmltopdf
+			fi
+	else if [ $operating_system = $ubuntu ]
+	     then
+			apt-get purge wkhtmltox? -y >> $ephesoft_log_file_name 2>&1
+			if [ $? != 0 ]
+			then
+				echo $error_uninstall_wkhtmltopdf
+			fi
+			apt-get autoremove -y --purge >> $ephesoft_log_file_name 2>&1
+			if [ $? = 0 ] 
+			then
+				echo $success_uninstall_wkhtmltopdf
+				replace_conf_parameters wkhtmltopdf 1
+			else
+				echo $error_uninstall_wkhtmltopdf
+			fi
+	     fi
+	fi
+}
+
+
+#Uninstalls the tesseract.
+uninstall_tesseract() {
+	if [ $operating_system = $redhat ]
+	then
+	      uninstall_tesseract_redhat
+	      uninstall_leptonica_redhat
+	else if [ $operating_system = $ubuntu ]
+	     then
+		      uninstall_leptonica_ubuntu
+		      uninstall_tesseract_ubuntu
+	      fi
+	 fi
+}
+
+# Uninstalling tesseract for redhat
+uninstall_tesseract_redhat() {
+	      echo $info_uninstall_tesseract_wait
+	      rpm -ev $tesseract_rpm_package >> $ephesoft_log_file_name 2>&1
+	      if [ $? = 0 ] 
+	      then
+		      uninstall_dependencies $tesseract_version Tesseract tesseract
+	      else
+		      echo $error_uninstall_tesseract
+	      fi
+}
+
+# Uninstalling Leptonica for redhat
+uninstall_leptonica_redhat() {
+	      echo $info_uninstall_leptonica
+	      rpm -ev $leptonica_rpm_package >> $ephesoft_log_file_name 2>&1 
+	      if [ $? = 0 ] 
+	      then
+		      uninstall_dependencies $leptonica_version Leptonica leptonica
+	      else
+		      echo $error_uninstall_leptonica
+	      fi
+}
+
+# Uninstalling tesseract for Ubuntu
+uninstall_tesseract_ubuntu() {
+	      echo $info_uninstall_tesseract_wait
+	      dpkg -r tesseract >> $ephesoft_log_file_name 2>&1 
+	      if [ $? = 0 ] 
+	      then
+		      uninstall_dependencies $tesseract_version Tesseract tesseract
+	      else
+		      echo $error_uninstall_tesseract
+	      fi
+}
+
+# Uninstalling Leptonica for Ubuntu
+uninstall_leptonica_ubuntu() {
+	      echo $info_uninstall_leptonica
+	      uninstall_dependencies $leptonica_version Leptonica leptonica
+	      dpkg -r leptonica >> $ephesoft_log_file_name 2>&1 
+	      if [ $? = 0 ] 
+	      then			    
+		    replace_conf_parameters leptonica 1
+	      else
+		      echo $error_uninstall_leptonica
+	      fi
+}
+
+
+#Uninstalls the OmniPage and poco.
+uninstall_nuance() {
+
+	echo $info_uninstall_poco
+	if [ $operating_system = $redhat ]
+	then
+		    rpm -ev $poco_rpm_package >> $ephesoft_log_file_name 2>&1
+		    if [ $? = 0 ] 
+		    then
+			    echo $success_uninstall_poco
+			    replace_conf_parameters poco 1
+		    else
+			    echo $error_uninstall_poco
+		    fi
+	else if [ $operating_system = $ubuntu ]
+	     then
+		    dpkg -r poco >> $ephesoft_log_file_name 2>&1 
+		    if [ $? = 0 ] 
+		    then
+			    echo $success_uninstall_poco
+			    replace_conf_parameters poco 1
+		    else
+			    echo $error_uninstall_poco
+		    fi
+	     fi
+	fi
+	
+	echo $info_uninstall_nuance_wait
+	if [ $operating_system = $redhat ]
+	then
+		    rpm -ev $nuance_devel_rpm_package >> $ephesoft_log_file_name 2>&1 
+			rpm -ev $nuance_lib64_rpm_package >> $ephesoft_log_file_name 2>&1
+			if [ $? = 0 ] 
+			then
+				echo $success_uninstall_nuance
+				replace_conf_parameters omnipage 1
+			else
+				echo $error_uninstall_nuance
+			fi
+
+	else if [ $operating_system = $ubuntu ]
+	     then
+		    dpkg -P omnipage-csdk-devel >> $ephesoft_log_file_name 2>&1
+			dpkg -P omnipage-csdk-lib64 >> $ephesoft_log_file_name 2>&1
+			if [ $? = 0 ] 
+			then
+				echo $success_uninstall_nuance
+				replace_conf_parameters omnipage 1
+			else
+				echo $error_uninstall_nuance
+			fi
+	     fi
+	fi
+
+}
+
+#Uninstall MySQL
+uninstall_mysql() {
+	echo $info_uninstall_mysql_wait
+	service mysqld stop >> $ephesoft_log_file_name 2>&1
+	if [ $? != 0 ] 
+	then
+		echo $error_stopping_mysql_server
+	fi
+	
+	delete_files_and_show_message_if_error_occurred "$mysql_installation_directory" "$error_deleting_mysql_folder"
+	
+	delete_files_and_show_message_if_error_occurred "$mysql_configuration_file" "$error_deleting_mysql_conf_file"
+	
+	delete_files_and_show_message_if_error_occurred "$mysql_links" "$error_deleting_mysql_link"
+	if [ $operating_system = $redhat ]
+	then
+		  chkconfig --del mysqld >> $ephesoft_log_file_name 2>&1
+		  if [ $? != 0 ] 
+		  then
+			  echo $error_deleting_mysql_service
+		  fi
+	else if [ $operating_system = $ubuntu ]
+	     then
+		  update-rc.d -f mysqld  remove >> $ephesoft_log_file_name 2>&1
+		  if [ $? != 0 ] 
+		  then
+			  echo $error_deleting_mysql_service
+		  fi
+	     fi
+	fi
+	echo $success_uninstall_mysql	
+	replace_conf_parameters mysql 1	
+	if [ $database_port_number != 0 ]
+	then
+		echo $firewall_deny$database_port_number$firewall_deny_mysql_port
+		disable_access_port "$database_port_number" "$error_disable_db_port"
+		replace_conf_parameters database_port_number "$database_port_number"
+	fi
+
+}
+
+#Uninstalls the MariaDB database.
+uninstall_mariadb() {
+	echo $info_uninstall_mariadb_wait
+	service mysqld stop >> $ephesoft_log_file_name 2>&1
+	if [ $? != 0 ] 
+	then
+		echo $error_stopping_mariadb_server
+	fi
+	
+	delete_files_and_show_message_if_error_occurred "$mariadb_installation_directory" "$error_deleting_mariadb_folder"
+	
+	delete_files_and_show_message_if_error_occurred "$mariadb_installation_directory" "$error_deleting_mariadb_conf_file"
+	
+	delete_files_and_show_message_if_error_occurred "$mysql_links" "$error_deleting_mariadb_link"
+	if [ $operating_system = $redhat ]
+	then
+		  chkconfig --del mysqld >> $ephesoft_log_file_name 2>&1
+		  if [ $? != 0 ] 
+		  then
+			  echo $error_deleting_mariadb_service
+		  fi
+	else if [ $operating_system = $ubuntu ]
+	     then
+		  update-rc.d -f mysqld  remove >> $ephesoft_log_file_name 2>&1
+		  if [ $? != 0 ] 
+		  then
+			  echo $error_deleting_mariadb_service
+		  fi
+	     fi
+	fi
+	echo $success_uninstall_mariadb	
+	replace_conf_parameters mariadb 1	
+	if [ $database_port_number != 0 ]
+	then
+		echo $firewall_deny$database_port_number$firewall_deny_mysql_port
+		disable_access_port "$database_port_number" "$error_disable_db_port"
+		replace_conf_parameters database_port_number "$database_port_number"
+	fi
+
+}
+
+#Uninstalls the dependencies completely installed inside /opt/sources directory.
+uninstall_dependencies() {
+	if [ -d $sources_folder/$1 ]
+	then
+		cd $sources_folder/$1
+		make uninstall >> $ephesoft_log_file_name 2>&1
+		if [ $? = 0 ] 
+		then
+			cd ..
+			rm -rf $sources_folder/$1
+			if [ $? != 0 ] 
+			then
+				echo $error_deleting $1 folder.
+			else
+				echo  $2 $successful_uninstall
+				replace_conf_parameters $3 1
+			fi
+		else
+			echo $error_uninstall $2
+		fi
+	else
+		echo $1 $error_not_exists
+	fi
+}
+
+#Takes the user input(y/n) and uninstall the dependency if user presses y else do nothing.
+uninstall() {
+	
+	echo $1
+	while :
+	do	 
+                readinput overwrite_character
+	        echo "$overwrite_character" | grep '^[yYnN]$' >> $ephesoft_log_file_name 2>&1
+                if [ $? != 0 ]
+                then
+                   echo $error_invalid_option_selected
+                   continue
+                fi
+                if [ $overwrite_character = 'y' -o $overwrite_character = 'Y' ]
+                then
+			$2
+                fi
+	break;
+        done
+}
+
+#Deletes the Shared Folders.
+delete_shared_folders() {
+	while :
+	do	 
+                readinput overwrite_character
+	        echo "$overwrite_character" | grep '^[yYnN]$' >> $ephesoft_log_file_name 2>&1
+                if [ $? != 0 ]
+                then
+                   echo $error_invalid_option_selected
+                   continue
+                fi
+                if [ $overwrite_character = 'y' -o $overwrite_character = 'Y' ]
+                then
+			echo $info_removing_sharedfolders
+			delete_files_recursively $1 "$error_deleting_sharedfolders" "$success_uninstall_shared_folders"
+			replace_conf_parameters ephesoft_shared_folders $ephesoft_shared_folders
+                fi
+	break;
+        done
+}
+
+#Takes the user input(y/n) and uninstall the dependency if user presses y else exit from script.
+uninstall_and_exit_if_error_occurred() {
+	while :
+	do	 
+                readinput overwrite_character
+	        echo "$overwrite_character" | grep '^[yYnN]$' >> $ephesoft_log_file_name 2>&1
+                if [ $? != 0 ]
+                then
+                   echo $error_invalid_option_selected
+                   continue
+                fi
+                if [ $overwrite_character = 'y' -o $overwrite_character = 'Y' ]
+                then
+   			$1
+		else
+			exit_script
+                fi
+		break;
+        done
+}
+
+#Stops the server by killing the process running for Ephesoft server.
+stop_server() {
+	$ephesoft_application/JavaAppServer/bin/shutdown.sh >> $ephesoft_log_file_name 2>&1
+	if [ $? != 0 ] 
+	then
+        	echo $error_stopping_server
+	fi
+}
+
+
+#Check for the existence of Ephesoft configuration directory.
+if [ ! -d $ephesoft_configuration_directory_path ]
+then
+	show_error_message_and_exit "$error_conf_directory"
+fi
+
+#Assigning read write permission to Ephesoft configuration directory.
+chmod -R 755 $ephesoft_configuration_directory_path
+
+#Check for the existence of Ephesoft configuration file.
+if [ ! -f $ephesoft_configuration_file ]
+then
+	show_error_message_and_exit "$error_conf_file"
+fi
+
+for param_name in "${ephesoft_conf_file_params[@]}"
+do
+   param_value=$(grep $param_name $ephesoft_configuration_file )
+   if [ "$param_value" = '' ]
+   then
+        echo $param_name=0 >> $ephesoft_configuration_file
+   fi
+done
+
+#Loading all configuration parameters from configuration file.
+for i in `cat $ephesoft_configuration_file `
+do
+   var=`echo "$i" | awk -F"=" '{print $1}'`
+   param=`echo "$i" | awk -F"=" '{print $2}'`
+   eval $var=$param
+done
+
+if [ $os_name != 0 ]
+then
+      operating_system=$os_name
+fi
+
+if [ $operating_system = $centos ] || [ $operating_system = $amazon_linux ]
+then
+	operating_system=$redhat
+fi
+
+
+#Deleting extra dependencies from ephesoft.conf file
+if [ $operating_system = $ubuntu ]
+then
+	sed -i /checkinstall=0/d  $ephesoft_configuration_file >>$ephesoft_log_file_name  2>&1
+	if [ $? != 0 ]
+	then
+		echo $error_in_removing checkinstall $error_in_removing_dependency_conf_file
+	fi
+	sed -i /dev_tools=0/d  $ephesoft_configuration_file >>$ephesoft_log_file_name  2>&1
+	if [ $? != 0 ]
+	then
+		echo $error_in_removing dev_tools $error_in_removing_dependency_conf_file
+	fi
+fi
+
+if [ $ephesoft_installed != $ephesoft_version ] && [ $ephesoft_installed != 0 ]
+then
+    
+    echo $version_error_uninstall_identifies$ephesoft_installed$version_error_uninstall_installed$ephesoft_installed$version_error_uninstall_file
+    exit_script
+
+fi
+echo $info_uninstalling_ephesoft
+
+#Checking whether the Ephesoft server is running or not.
+catalina_pid=$ephesoft_application/JavaAppServer/pid/catalina.pid
+
+#Stopping the Ephesoft server if it is already running.
+if [ -f ${catalina_pid} ]
+then
+	ps -p $(cat ${catalina_pid}) >> $ephesoft_log_file_name 2>&1
+	if [ $? == 0 ]
+	then
+		echo $info_server_already_running
+		uninstall_and_exit_if_error_occurred stop_server
+	fi
+fi
+
+#Delete the temp directory file if it exists and set variable to 0.
+if [ $temp_directory != "0" ]
+then
+	if [ -d $temp_directory ]
+	then
+		echo Deleting temp file $temp_directory >> $ephesoft_log_file_name  2>&1
+		delete_files_and_show_message_if_error_occurred $temp_directory "$error_occurred_while_deleting_temp_directory"
+	fi
+	temp_directory=0
+	replace_conf_parameters temp_directory $temp_directory
+fi
+
+#Uninstalling Ephesoft application.
+if [  $ephesoft_application != 0 ]
+then
+	chmod -R 755 $ephesoft_application
+	echo $info_uninstall_application
+   	rm -rf $ephesoft_application/Application $ephesoft_application/EphesoftReports $ephesoft_application/Dependencies $ephesoft_application/Documents $ephesoft_application/JavaAppServer $ephesoft_application/Licenses $ephesoft_application/ReadMe.txt $ephesoft_application/Certs $ephesoft_application/Utility
+	if [ $? != 0 ] 
+	then
+		echo $error_deleting_application
+	else
+		echo $success_uninstall_application
+	fi
+	
+	delete_folder_if_empty "$ephesoft_application" "$error_deleting_ephesoft_folder" "$success_deleting_ephesoft_folder"
+	if [[ -f $libreoffice_java_path ]] && [ $operating_system = redhat ]
+	then
+		delete_files_and_show_message_if_error_occurred "$libreoffice_java_path" "$error_deleting_jdk_path"
+	fi
+	replace_conf_parameters ephesoft_application $ephesoft_application
+	replace_conf_parameters authentication_mode $authentication_mode
+	replace_conf_parameters connector_protocol $connector_protocol
+	
+	replace_conf_parameters server_name $server_name
+	
+	#Wkhtmltopdf removed with dependencies.
+	replace_conf_parameters wkhtmltopdf 1
+	
+	if [[ $oracle == 1 ]]
+	then
+		replace_conf_parameters database_type $database_type 
+		replace_conf_parameters oracle 1
+	fi
+	
+	if [ $application_user != 0 ]
+	then
+		replace_conf_parameters application_user $application_user
+		replace_conf_parameters application_user_group $application_user_group 
+	fi
+fi
+
+#Uninstalling Ephesoft SharedFolders.
+if [ $ephesoft_shared_folders != 0 ]
+then	
+	chmod -R 755 $ephesoft_shared_folders	
+	echo $info_uninstall_shared_folders
+	delete_shared_folders $ephesoft_shared_folders	
+fi
+
+#Uninstalling Imagemagick.
+if [ $imagemagick = 1 ]
+then
+	uninstall "$info_uninstalling_imagemagick" uninstall_imagemagick
+fi
+
+#Uninstalling Graphicsmagick.
+if [ $graphicsmagick = 1 ]
+then
+	uninstall "$info_uninstalling_graphicsmagick" uninstall_graphicsmagick
+fi
+
+if [ $mariadb = 1 ]
+then
+	uninstall "$info_uninstall_mariadb" uninstall_mariadb
+	replace_conf_parameters database_type $database_type
+fi
+
+if [ $mysql = 1 ]
+then
+	uninstall "$info_uninstall_mysql" uninstall_mysql
+	replace_conf_parameters database_type $database_type
+fi
+
+if [ $libreoffice = 1 ]
+then
+	uninstall "$info_uninstall_libreoffice" uninstall_libreoffice
+fi
+
+if [ $libreoffice = 0 ] && [ -d $libreoffice_installation_directory ]
+then
+	delete_files_and_show_message_if_error_occurred "$libreoffice_installation_directory" "$error_deleting_libreoffice_folder" >>$ephesoft_log_file_name  2>&1
+fi
+
+
+#if [ $wkhtmltopdf = 1 ]
+#then
+#	uninstall "$info_uninstall_wkhtmltopdf" uninstall_wkhtmltopdf
+#fi
+
+if [ $tesseract = 1 ]
+then
+  uninstall "$info_uninstall_tesseract" uninstall_tesseract
+
+fi
+
+if [ $omnipage = 1 ]
+then
+	 uninstall "$info_uninstall_nuance" uninstall_nuance
+fi
+
+if [ $tomcat_port_number != 0 ]
+then
+	echo $firewall_deny$tomcat_port_number$firewall_deny_tomcat_port
+	disable_access_port "$tomcat_port_number" "$error_disable_tomcat_port"
+	find  $ephesoft_configuration_directory_path -type f -name 'ephesoft.conf' -exec sed -i "s|tomcat_port_number=.*|tomcat_port_number=0|g" {} \;
+fi
+
+#Delete the sources folder if it is empty.
+delete_folder_if_empty $sources_folder "$error_deleting_dependency_source_folder" "$success_deleting_dependency_source_folder"
+delete_folder_if_empty "$ephesoft_application" "$error_deleting_ephesoft_folder" "$success_deleting_ephesoft_folder"
+
+if [ -f "$ephesoft_service_link" ] 
+then
+    echo "$info_deleting_service_file"
+    
+    if [ $operating_system = redhat ]
+    then
+	  chkconfig --del $service_name >> $ephesoft_log_file_name  2>&1
+	  if [ $? != 0 ]
+	  then
+		  echo "$error_deleting_ephesoft_service"
+	  else
+	      echo "$success_deleting_ephesoft_service"
+	  fi
+    else if [ $operating_system = ubuntu ]
+	then
+	  update-rc.d -f $service_name remove >> $ephesoft_log_file_name  2>&1
+	  if [ $? != 0 ]
+	  then
+		  echo "$error_deleting_ephesoft_service"
+	  else
+	      echo "$success_deleting_ephesoft_service"
+	  fi
+	  
+	fi
+    fi
+	delete_files_and_show_message_if_error_occurred "$ephesoft_service_link" "$error_deleting_ephesoft_service"
+fi
+
+
+if [ -f "$ephesoft_user_registration_information_file_path" ] 
+then
+    delete_files_and_show_message_if_error_occurred "$ephesoft_user_registration_information_file_path" "$error_deleting_user_config_file" >> $ephesoft_log_file_name  2>&1
+fi
+
+replace_conf_parameters ephesoft_installed $ephesoft_installed
+
+echo `date "+%Y-%m-%d %H:%M:%S"` 
+echo $success_ephesoft_uninstall
+
+}
+
+uninstall_ephesoft $product_name | tee -a $ephesoft_log_file_name
+
+
+
